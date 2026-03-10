@@ -22,7 +22,7 @@ async def _help(_, m: types.Message):
 @app.on_message(filters.command(["start"]))
 @lang.language()
 async def start(_, message: types.Message):
-    if message.from_user.id in app.bl_users and message.from_user.id not in db.notified:
+    if message.from_user and message.from_user.id in app.bl_users and message.from_user.id not in db.notified:
         return await message.reply_text(message.lang["bl_user_notify"])
 
     if len(message.command) > 1 and message.command[1] == "help":
@@ -79,7 +79,18 @@ async def _new_member(_, message: types.Message):
     await asyncio.sleep(3)
     for member in message.new_chat_members:
         if member.id == app.id:
-            if await db.is_chat(message.chat.id):
-                return
-            await utils.send_log(message, True)
-            await db.add_chat(message.chat.id)
+            if not await db.is_chat(message.chat.id):
+                await utils.send_log(message, True)
+                await db.add_chat(message.chat.id)
+
+            try:
+                _text = message.lang["start_gp"].format(app.name)
+                key = buttons.start_key(message.lang, private=False)
+                await app.send_photo(
+                    chat_id=message.chat.id,
+                    photo=config.START_IMG,
+                    caption=_text,
+                    reply_markup=key,
+                )
+            except Exception:
+                pass
