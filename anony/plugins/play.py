@@ -10,6 +10,7 @@ from pyrogram import filters, types
 from anony import anon, app, config, db, lang, queue, tg, yt
 from anony.helpers import buttons, utils
 from anony.helpers._play import checkUB
+from anony.core.youtube import CHUNK_DURATION
 
 
 def playlist_to_queue(chat_id: int, tracks: list) -> str:
@@ -119,6 +120,30 @@ async def play_hndlr(
         fname = f"downloads/{file.id}.{'mp4' if video else 'webm'}"
         if Path(fname).exists():
             file.file_path = fname
+        elif not video and not m3u8 and not media and file.duration_sec > CHUNK_DURATION:
+            # ── Chunk-pipeline streaming ──────────────────────────────────
+            # Get a direct stream URL first (fast, no full download),
+            # then play chunk-by-chunk: play chunk N while chunk N+1 downloads.
+            await sent.edit_text(m.lang["play_downloading"])
+            direct_url = await yt.get_direct_url(file.id)
+            if direct_url:
+                await anon.play_chunked(
+                    chat_id=m.chat.id,
+                    message=sent,
+                    track=file,
+                    direct_url=direct_url,
+                )
+                if not tracks:
+                    return
+                added = playlist_to_queue(m.chat.id, tracks)
+                await app.send_message(
+                    chat_id=m.chat.id,
+                    text=m.lang["playlist_queued"].format(len(tracks)) + added,
+                )
+                return
+            else:
+                # Fallback: direct URL extraction failed, download normally
+                file.file_path = await yt.download(file.id, video=video)
         else:
             await sent.edit_text(m.lang["play_downloading"])
             file.file_path = await yt.download(file.id, video=video)
